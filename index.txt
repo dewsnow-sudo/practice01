@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오늘의 급식 정보</title>
+    <style>
+        :root {
+            --primary-color: #2ecc71;
+            --background-color: #f9fbf9;
+            --card-color: #ffffff;
+            --text-color: #2c3e50;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background-color: var(--card-color);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .school-name {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-bottom: 25px;
+        }
+
+        .search-box {
+            margin-bottom: 25px;
+        }
+
+        input[type="date"] {
+            padding: 12px 15px;
+            font-size: 16px;
+            border: 2px solid #bdc3c7;
+            border-radius: 8px;
+            outline: none;
+            transition: all 0.3s;
+            width: 80%;
+            color: var(--text-color);
+        }
+
+        input[type="date"]:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 8px rgba(46, 204, 113, 0.2);
+        }
+
+        .meal-card {
+            background-color: #fdfefe;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: left;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+
+        .meal-type {
+            font-weight: bold;
+            color: var(--primary-color);
+            font-size: 18px;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+
+        .meal-menu {
+            line-height: 1.9;
+            font-size: 16px;
+        }
+
+        .info-msg {
+            color: #7f8c8d;
+            text-align: center;
+            font-style: italic;
+            margin-top: 50px;
+        }
+
+        .loading {
+            color: #95a5a6;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>교내 급식 정보 조회</h1>
+    <div class="school-name">경기도교육청 (학교코드: 7530469)</div>
+
+    <div class="search-box">
+        <input type="date" id="meal-date" onchange="fetchMealData()">
+    </div>
+
+    <div id="meal-container">
+        <p class="info-msg">날짜를 선택하면 급식 정보가 표시됩니다.</p>
+    </div>
+</div>
+
+<script>
+    // 앱 실행 시 오늘 날짜를 기준으로 자동 조회
+    window.onload = function() {
+        const today = new Date().toISOString().split('T')[0];
+        const dateInput = document.getElementById('meal-date');
+        dateInput.value = today;
+        fetchMealData();
+    };
+
+    function fetchMealData() {
+        const dateInput = document.getElementById('meal-date').value;
+        const mealContainer = document.getElementById('meal-container');
+
+        if (!dateInput) return;
+
+        // YYYY-MM-DD -> YYYYMMDD 변환
+        const ymd = dateInput.replace(/-/g, '');
+
+        // 변경된 경기도교육청(J10) 및 학교코드(7530469) 적용
+        const officeCode = "J10";
+        const schoolCode = "7530469";
+        const apiUrl = `https://open.neis.go.kr/hub/mealServiceDietInfo?ATPT_OFCDC_SC_CODE=${officeCode}&SD_SCHUL_CODE=${schoolCode}&MLSV_YMD=${ymd}`;
+
+        // 로딩 바 표시
+        mealContainer.innerHTML = '<p class="info-msg loading">급식 정보를 불러오는 중입니다...</p>';
+
+        fetch(apiUrl)
+            .then(response => response.text()) // XML 파싱을 위해 텍스트로 수신
+            .then(xmlString => {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+                
+                // 에러 코드 검증 (<CODE> 태그 추출)
+                const errorCodeNode = xmlDoc.getElementsByTagName("CODE")[0];
+                const isError = errorCodeNode && errorCodeNode.textContent !== "INFO-000";
+
+                const rows = xmlDoc.getElementsByTagName("row");
+
+                if (rows.length > 0 && !isError) {
+                    mealContainer.innerHTML = ''; // 화면 초기화
+
+                    // 여러 끼니가 나올 수 있으므로 노드 순회
+                    for (let i = 0; i < rows.length; i++) {
+                        const row = rows[i];
+                        
+                        const mealType = row.getElementsByTagName("MMEAL_SC_NM")[0].textContent;
+                        const calInfo = row.getElementsByTagName("CAL_INFO")[0].textContent;
+                        let ddishNm = row.getElementsByTagName("DDISH_NM")[0].textContent;
+
+                        // <br/> 태그 정제 및 가독성을 위한 불릿 추가
+                        ddishNm = ddishNm.replace(/<br\/>/g, '<br>• ');
+
+                        const card = document.createElement('div');
+                        card.className = 'meal-card';
+                        card.innerHTML = `
+                            <div class="meal-type">${mealType} (${calInfo})</div>
+                            <div class="meal-menu">• ${ddishNm}</div>
+                        `;
+                        mealContainer.appendChild(card);
+                    }
+                } else {
+                    // 주말, 방학 등 급식이 없을 때
+                    mealContainer.innerHTML = '<p class="info-msg">해당 날짜에는 급식 정보가 없습니다. <br><span>(주말, 공휴일 또는 방학)</span></p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                mealContainer.innerHTML = '<p class="info-msg" style="color: #e74c3c;">데이터를 가져오는 중 오류가 발생했습니다.</p>';
+            });
+    }
+</script>
+
+</body>
+</html>
